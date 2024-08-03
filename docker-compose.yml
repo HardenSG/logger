@@ -1,0 +1,69 @@
+name: dynamic_config
+
+services:
+  mongo: 
+    container_name: docker_mongodb
+    image: mongo:latest
+    # 数据卷
+    volumes: 
+      - mongo-data:/data/db
+      - ./init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js:ro
+    ports:
+      - "27017:27017"
+    # 除非手动停止docker，否则一直重启
+    restart: unless-stopped
+    networks:
+      - same_network
+
+  dynamic_config:
+    image: registry.cn-hangzhou.aliyuncs.com/hardensg/dynamic_config:latest
+    # ports:
+    #   - "3000:3000"
+    expose:
+      - "3000" # 如果是负载均衡就不能启动固定端口映射
+    environment:
+      - LANG=C.UTF-8 # 打印的内容编码为UTF8
+    volumes: 
+      - /opt/cert:/opt/cert # 同步本地的/opt/cert目录到docker数据卷
+    networks:
+      - same_network
+    depends_on:
+      - mongo # 上线依赖于mongo
+
+  nginx: 
+    image: nginx:latest
+    ports: # 将本机的 8080 端口映射到容器的80端口
+      - "8080:80"    
+    container_name: nginx-node
+    restart: unless-stopped
+    volumes: 
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - /opt/cert:/opt/cert
+    networks: 
+      - same_network
+    links: # 设置 node 服务别名，其实是设置/etc/hosts的域名解析
+      - "dynamic_config"
+    depends_on: # 指定依赖于哪个服务
+      - dynamic_config
+
+  # 自动负载
+  # docker-gen:
+  #   image: jwilder/docker-gen
+  #   container_name: docker_gen
+  #   volumes:
+  #     - /var/run/docker.sock:/tmp/docker.sock:ro
+  #     - ./nginx.tmpl:/etc/docker-gen/templates/nginx.tmpl:ro
+  #     - ./nginx.conf:/etc/nginx/nginx.conf
+  #   entrypoint: ["docker-gen", "-watch", "-only-exposed", "-notify", "nginx -s reload", "/etc/docker-gen/templates/nginx.tmpl", "/etc/nginx/nginx.conf"]
+  #   networks:
+  #     - same_network
+  #   depends_on:
+  #     - nginx
+    
+volumes:
+  mongo-data:
+
+networks:
+  same_network:
+    external: true
+    name: dynamic_config_same_network
