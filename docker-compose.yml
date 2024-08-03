@@ -1,4 +1,4 @@
-name: dynamic_config
+name: logger_micro_service
 
 services:
   logger_micro_service:
